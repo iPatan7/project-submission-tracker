@@ -16,19 +16,20 @@ export PUBLIC_PORT=${PUBLIC_PORT:-8181}
 
 # Secrets (Redis password, faculty token) come from the environment (CI secrets)
 # or from .env (local run). They are never written into git.
-if [ -z "${REDIS_PASSWORD:-}" ]; then
-    if [ ! -f .env ]; then
-        {
-            echo "REDIS_PASSWORD=$(openssl rand -hex 16)"
-            echo "FACULTY_TOKEN=$(openssl rand -hex 16)"
-        } > .env
-        chmod 600 .env
-        echo "created .env with new random secrets"
-    fi
+if [ -f .env ]; then
     set -a
     . ./.env
     set +a
 fi
+for name in REDIS_PASSWORD FACULTY_TOKEN; do
+    if [ -z "${!name:-}" ]; then
+        value=$(openssl rand -hex 16)
+        echo "$name=$value" >> .env
+        chmod 600 .env
+        export "$name=$value"
+        echo "added a random $name to .env"
+    fi
+done
 export REDIS_PASSWORD FACULTY_TOKEN
 
 case "${1:-}" in
