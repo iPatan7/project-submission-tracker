@@ -85,6 +85,7 @@ jobs:
     env:
       IMAGE_TAG: ${{ needs.build.outputs.version }}
       REDIS_PASSWORD: ${{ secrets.TEST_REDIS_PASSWORD }}
+      FACULTY_TOKEN: ${{ secrets.TEST_FACULTY_TOKEN }}
       APP_ENV: test
     steps:
       - uses: actions/checkout@v4

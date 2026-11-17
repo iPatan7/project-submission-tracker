@@ -14,19 +14,22 @@ export IMAGE=${IMAGE:-submission-tracker}
 export IMAGE_TAG=${IMAGE_TAG:-1.0.0-$(git rev-parse --short HEAD 2>/dev/null || echo local)}
 export PUBLIC_PORT=${PUBLIC_PORT:-8181}
 
-# The Redis password comes from the environment (CI secret) or from .env (local).
-# It is never written into git.
+# Secrets (Redis password, faculty token) come from the environment (CI secrets)
+# or from .env (local run). They are never written into git.
 if [ -z "${REDIS_PASSWORD:-}" ]; then
     if [ ! -f .env ]; then
-        echo "REDIS_PASSWORD=$(openssl rand -hex 16)" > .env
+        {
+            echo "REDIS_PASSWORD=$(openssl rand -hex 16)"
+            echo "FACULTY_TOKEN=$(openssl rand -hex 16)"
+        } > .env
         chmod 600 .env
-        echo "created .env with a new random REDIS_PASSWORD"
+        echo "created .env with new random secrets"
     fi
     set -a
     . ./.env
     set +a
 fi
-export REDIS_PASSWORD
+export REDIS_PASSWORD FACULTY_TOKEN
 
 case "${1:-}" in
     build)

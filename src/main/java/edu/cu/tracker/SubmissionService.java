@@ -40,7 +40,9 @@ public class SubmissionService {
         return store.save(s);
     }
 
-    public Submission changeStatus(long id, String statusText) {
+    // synchronized so two reviewers cannot change the same submission at the same time
+    // (the app runs as one instance; more replicas would need a Redis transaction here)
+    public synchronized Submission changeStatus(long id, String statusText) {
         Submission current = get(id);
         Status next;
         try {

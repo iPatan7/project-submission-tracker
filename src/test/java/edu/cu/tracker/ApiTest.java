@@ -20,7 +20,7 @@ class ApiTest {
 
     @BeforeAll
     static void start() throws Exception {
-        Config config = new Config("unit-test", 0, "memory", "localhost", 6379, null, "test");
+        Config config = new Config("unit-test", 0, "memory", "localhost", 6379, null, "secret-token", "test");
         app = new App(config, new MemoryStore());
         app.start();
         base = "http://localhost:" + app.port();
@@ -32,7 +32,14 @@ class ApiTest {
     }
 
     private static HttpResponse<String> call(String method, String path, String json) throws Exception {
+        return call(method, path, json, "secret-token");
+    }
+
+    private static HttpResponse<String> call(String method, String path, String json, String token) throws Exception {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(base + path));
+        if (token != null) {
+            b.header("Authorization", "Bearer " + token);
+        }
         if (json == null) {
             b.method(method, HttpRequest.BodyPublishers.noBody());
         } else {
@@ -76,6 +83,16 @@ class ApiTest {
                 "{\"uid\":\"24MCC20082\",\"studentName\":\"B\",\"title\":\"T\",\"repoUrl\":\"https://github.com/b/t\"}");
         String id = created.body().replaceAll(".*\"id\":(\\d+).*", "$1");
         assertEquals(409, call("PUT", "/api/submissions/" + id + "/status", "{\"status\":\"APPROVED\"}").statusCode());
+    }
+
+    @Test
+    void statusChangeNeedsFacultyToken() throws Exception {
+        HttpResponse<String> created = call("POST", "/api/submissions",
+                "{\"uid\":\"24MCC20083\",\"studentName\":\"C\",\"title\":\"T\",\"repoUrl\":\"https://github.com/c/t\"}");
+        String id = created.body().replaceAll(".*\"id\":(\\d+).*", "$1");
+        String body = "{\"status\":\"UNDER_REVIEW\"}";
+        assertEquals(401, call("PUT", "/api/submissions/" + id + "/status", body, null).statusCode());
+        assertEquals(401, call("PUT", "/api/submissions/" + id + "/status", body, "wrong").statusCode());
     }
 
     @Test

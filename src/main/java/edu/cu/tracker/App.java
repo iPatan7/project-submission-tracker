@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,7 +24,7 @@ import java.util.concurrent.Executors;
  *   GET  /api/submissions                 list all submissions
  *   POST /api/submissions                 new submission {uid, studentName, title, repoUrl}
  *   GET  /api/submissions/{id}            one submission
- *   PUT  /api/submissions/{id}/status     change status {status}
+ *   PUT  /api/submissions/{id}/status     change status {status}, faculty token needed
  *   GET  /                                simple HTML page with all submissions
  */
 public class App {
@@ -81,7 +82,8 @@ public class App {
             code = 200;
         } catch (RuntimeException e) {
             body.put("status", "DOWN");
-            body.put("error", e.getMessage());
+            body.put("error", "store unavailable");
+            System.out.println("health check failed: " + e);
             code = 503;
         }
         body.put("env", config.env());
@@ -105,6 +107,10 @@ public class App {
             } else if (parts.length == 4 && method.equals("GET")) {
                 sendJson(ex, 200, service.get(parseId(parts[3])));
             } else if (parts.length == 5 && parts[4].equals("status") && method.equals("PUT")) {
+                if (!isFaculty(ex)) {
+                    sendJson(ex, 401, Map.of("error", "faculty token required"));
+                    return;
+                }
                 JsonObject in = readJson(ex);
                 String status = text(in, "status");
                 if (status == null) {
@@ -152,6 +158,17 @@ public class App {
                 %s</table></body></html>
                 """.formatted(esc(config.env()), esc(config.version()), store.name(), rows);
         send(ex, 200, "text/html; charset=utf-8", html);
+    }
+
+    /** Only faculty can change a status: "Authorization: Bearer <FACULTY_TOKEN>". */
+    private boolean isFaculty(HttpExchange ex) {
+        String token = config.facultyToken();
+        String header = ex.getRequestHeaders().getFirst("Authorization");
+        if (token == null || token.isBlank() || header == null) {
+            return false;
+        }
+        byte[] expected = ("Bearer " + token).getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(expected, header.getBytes(StandardCharsets.UTF_8));
     }
 
     private JsonObject readJson(HttpExchange ex) throws IOException {

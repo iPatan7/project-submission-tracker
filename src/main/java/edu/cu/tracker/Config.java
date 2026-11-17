@@ -6,7 +6,7 @@ package edu.cu.tracker;
  */
 public record Config(String env, int port, String storeType,
                      String redisHost, int redisPort, String redisPassword,
-                     String version) {
+                     String facultyToken, String version) {
 
     public static Config fromEnv() {
         return new Config(
@@ -16,6 +16,7 @@ public record Config(String env, int port, String storeType,
                 get("REDIS_HOST", "localhost"),
                 Integer.parseInt(get("REDIS_PORT", "6379")),
                 System.getenv("REDIS_PASSWORD"),
+                System.getenv("FACULTY_TOKEN"),
                 get("APP_VERSION", "dev"));
     }
 
