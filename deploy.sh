@@ -33,7 +33,7 @@ export REDIS_PASSWORD FACULTY_TOKEN
 
 case "${1:-}" in
     build)
-        mvn -B -q verify
+        mvn -B -ntp verify | grep -E 'Tests run:|BUILD|ERROR'
         docker build --build-arg APP_VERSION="$IMAGE_TAG" -t "$IMAGE:$IMAGE_TAG" .
         docker image ls "$IMAGE:$IMAGE_TAG"
         ;;
