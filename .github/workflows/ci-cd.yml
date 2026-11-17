@@ -57,7 +57,7 @@ jobs:
             sleep 2
           done
           [ "$state" = "healthy" ]
-          curl -fsS http://localhost:8080/health
+          curl -fsS http://localhost:8080/health; echo
           docker rm -f check
 
       - name: Keep the jar as a build artefact
