@@ -1,0 +1,108 @@
+name: CI-CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/ipatan7/project-submission-tracker
+
+jobs:
+  build:
+    name: Build, check and tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Compile and run unit tests
+        run: mvn -B verify
+
+      - name: Lint Dockerfile (hadolint)
+        run: docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile
+
+      - name: Work out version
+        id: version
+        run: |
+          VERSION="1.0.${{ github.run_number }}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Build Docker image
+        run: |
+          docker build --build-arg APP_VERSION="$VERSION" \
+            -t "$IMAGE:$VERSION" -t "$IMAGE:sha-$SHORT_SHA" .
+          docker image ls "$IMAGE"
+
+      - name: Check the image starts and is healthy
+        run: |
+          docker run -d --name check -e STORE_TYPE=memory -e APP_ENV=ci -p 8080:8080 "$IMAGE:$VERSION"
+          for i in $(seq 1 30); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' check)
+            echo "health: $state"
+            [ "$state" = "healthy" ] && break
+            sleep 2
+          done
+          [ "$state" = "healthy" ]
+          curl -fsS http://localhost:8080/health
+          docker rm -f check
+
+      - name: Keep the jar as a build artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: submission-tracker-${{ env.VERSION }}
+          path: target/submission-tracker.jar
+
+      - name: Push image to GitHub Container Registry
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:sha-$SHORT_SHA"
+
+  deploy-test:
+    name: Deploy to test environment
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_TAG: ${{ needs.build.outputs.version }}
+      REDIS_PASSWORD: ${{ secrets.TEST_REDIS_PASSWORD }}
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Deploy tagged image with Docker Compose
+        run: ./deploy.sh up
+
+      - name: Smoke test
+        run: ./deploy.sh test
+
+      - name: Show running version
+        run: |
+          curl -fsS http://localhost:8181/health; echo
+          ./deploy.sh logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
